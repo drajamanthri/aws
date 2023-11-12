@@ -1,3 +1,13 @@
+'''
+references
+subprocess
+https://docs.python.org/3/library/subprocess.html
+https://www.datacamp.com/tutorial/python-subprocess
+
+libreoffice
+https://www.systutorials.com/docs/linux/man/1-soffice/
+'''
+
 import os
 from io import BytesIO
 import tarfile
@@ -84,9 +94,7 @@ def convert_word_to_pdf(soffice_path, word_file_path, output_dir):
     conv_cmd = f"{soffice_path} --headless --norestore --invisible --nodefault --nofirststartwizard --nolockcheck --nologo --convert-to pdf:writer_pdf_Export --outdir {output_dir} {word_file_path}"
     response = subprocess.run(conv_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if response.returncode != 0:
-        response = subprocess.run(conv_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if response.returncode != 0:
-            return False
+        return False
     return True
 
 def lambda_handler(event, context):
@@ -102,16 +110,21 @@ def lambda_handler(event, context):
     download_path = f"/tmp/{base_name}"
     #output_dir = pdf file output path
     output_dir = "/tmp"
+    file_name, ext = os.path.splitext(base_name)
     
     download_from_s3(bucket, key, download_path)
     soffice_path = load_libre_office()
 
     is_converted = convert_word_to_pdf(soffice_path, download_path, output_dir)
+    if (os.path.exists(f"{output_dir}/{file_name}.pdf")):
+        print('pdf generated at ' + f"{output_dir}/{file_name}.pdf")
+    else:
+        print('pdf is NOT generated at ' + f"{output_dir}/{file_name}.pdf")
+
     if is_converted:
-        print('Pdf conversion is successful')
         #file_name: test
         #ext: .docx
-        file_name, ext = os.path.splitext(base_name)
+        
         upload_key = ''
         if key_prefix:
             upload_key = f"{key_prefix}/{file_name}.pdf"
