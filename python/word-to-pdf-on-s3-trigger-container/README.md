@@ -24,20 +24,20 @@ Example<br>
 
 Run the get-login-password command to authenticate the Docker CLI to your Amazon ECR registry. Without authenticating the docker commands will not work.<br>
 <code>
-aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin <aws-account-id>.dkr.ecr.us-west-1.amazonaws.com
+aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin {aws-account-id}.dkr.ecr.us-west-1.amazonaws.com
 </code>
 <br>
 
 Run the docker tag command to tag your local image into your Amazon ECR repository as the latest version.<br>
 <code>
-docker tag docker-image:test <ECRrepositoryUri>:latest
+docker tag docker-image:test {ECRrepositoryUri}:latest
 </code>
 <br>
 
 Run the docker push command to deploy your local image to the Amazon ECR repository. Make sure to include :latest at the end of the repository URI.
 <br>
 <code>
-docker push <aws-account-id>.dkr.ecr.us-west-1.amazonaws.com/test-repo:latest
+docker push {aws-account-id}.dkr.ecr.us-west-1.amazonaws.com/test-repo:latest
 </code>
 
 <h2>Create lambda function and test</h2>
