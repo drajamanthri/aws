@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TestApp
+
+  Sample SAM Template for TestApp
+  
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  
+  # Api
+  # this is the api associated with the Get and HelloWorldFunction.
+  # 
+  # Tasks
+  # 1 Requires Api key
+  # 2 Create Prod state
+  # 3 Create usage plan, create api key, add the key to the usage plan. 
+  # 4 Associte usage plan with Prod state
+  # 5 Define a model to be used with Get lambda function. This model defines the id parameter
+  TestAppApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: TestApp #If api name is not given, api name is the deployment stack name
+      StageName: Prod
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan: 
+          UsagePlanName: TestApp
+          #https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-property-api-apiusageplan.html
+          CreateUsagePlan: PER_API #creates usage plan, create api key, and add the api key to the usage plan
+          Description: TestApp api usage plan
+          Quota:
+            Limit: 500
+            Period: MONTH
+          Throttle:
+            BurstLimit: 100
+            RateLimit: 50
+          # Tags:
+          #   - Key: TagName
+          #     Value: TagValue
+      Models:
+        GetRequestModel: #GetRequestModel: model name
+          type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string #integer
+      
+  #This is a test lambda function which can be called by /hello path
+  #This function requires api key
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: hello-world/
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Architectures:
+        - x86_64
+      Events:
+        HelloWorld:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /hello
+            Method: get
+            RestApiId: #if api id is not specified, sam will create one automatically
+              Ref: TestAppApi
+            Auth:
+              ApiKeyRequired: true
+              
+  #This is the create lambda function which gets called on s3 object creation.
+  #handler path: create/app.mjs
+  Create:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: create/
+      FunctionName: TestApp-Create
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Architectures:
+        - x86_64
+      Events:
+        S3Event:
+          Type: S3 
+          Properties: 
+            Bucket:
+              Ref: TestAppFilesBucket
+            Events: [s3:ObjectCreated:*]
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TestAppFilesTable
+            
+  #This is the delete lambda function which gets called on s3 object deletion.
+  #handler path: delete/app.mjs
+  Delete:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: delete/
+      FunctionName: TestApp-Delete
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Architectures:
+        - x86_64
+      Events:
+        S3Event:
+          Type: S3 
+          Properties: 
+            Bucket:
+              Ref: TestAppFilesBucket
+            Events: [s3:ObjectRemoved:*]
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TestAppFilesTable
+            
+  #This is the get lambda function which is called by api. An api key is required to call this function.
+  # This function is associated with the usage plan and api key created by above defined TestAppApi.
+  # path: prod_api_url/get?id=file_nqme
+  # id query parameter is required 
+  # 
+  #handler path: delete/app.mjs
+  Get:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: get_/. #if 'get' is used instead of 'get_', the deployment failed. 
+      FunctionName: TestApp-Get
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Architectures:
+        - x86_64
+      Events:
+        ApiEvent:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /get
+            Method: get
+            RestApiId: !Ref TestAppApi #if api id is not specified, sam will create one automatically
+            Auth:
+              ApiKeyRequired: true
+            RequestModel: 
+               Model: GetRequestModel
+               ValidateBody: false
+               ValidateParameters: true
+               Required: true
+            RequestParameters: #Both RequestModel and RequestParameters needed for the query string validator to work
+              - method.request.querystring.id:
+                  Required: true
+                  Caching: false
+            
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TestAppFilesTable
+         
+  #This is the bucket that generates the s3 events 
+  # adding a file to this bucket calls above defined Create lambda function
+  # deleting a file from the buket calls above defined Delete lambda function
+  TestAppFilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: testapp-files
+    
+  #This is the dynamodb table that stores the file information
+  # This is accessed by all Create, Delete, and Get lambda functions
+  TestAppFilesTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: TestAppFiles
+            
