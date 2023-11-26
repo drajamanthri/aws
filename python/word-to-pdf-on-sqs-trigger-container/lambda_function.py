@@ -11,9 +11,9 @@ https://wiki.documentfoundation.org/Documentation/Install/Linux
 import os
 import boto3
 import subprocess
+import json
 
-upload_bucket = 'test-dest'
-
+destination_bucket = 'test-dest-23'
  
 '''
 This function downloads an object from s3 bucket
@@ -62,10 +62,20 @@ def convert_word_to_pdf(word_file_path, output_dir):
     return True
 
 def handler(event, context):
+    event_body = event['Records'][0]['body']
+    event_body = json.loads(event_body)
+    if 'bucket' not in event_body:
+        print('The bucket is not in the sqs message')
+        return
+    
+    if 'key' not in event_body:
+        print('Ket is not in the SQS message')
+        return
+    
     #bucket = bucket name that triggered the event
-    bucket = event['Records'][0]['s3']['bucket']['name']
+    bucket = event_body['bucket']
     #key: test.docx
-    key = event['Records'][0]['s3']['object']['key']
+    key = event_body['key']
     print('src bucket', bucket, 'key', key)
 
     #key_prefix: ''
@@ -99,7 +109,7 @@ def handler(event, context):
         else:
             upload_key = f"{file_name}.pdf"
 
-        upload_to_s3(f"{output_dir}/{file_name}.pdf", upload_bucket, upload_key)
+        upload_to_s3(f"{output_dir}/{file_name}.pdf", destination_bucket, upload_key)
         print('Pdf was uploaded successfully')
     else:
         print('Error when converting to pdf')

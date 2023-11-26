@@ -1,8 +1,22 @@
-<h1>Word to pdf conversion by libreoffice container deployed on aws lambda function-on s3 trigger</h1>
+<h1>Word to pdf conversion by libreoffice container deployed on aws lambda function-on SQS Trigger</h1>
 
-In this project, we are going to convert a doc file to pdf by using libreoffice container deployed on an aws lambda function. We will setup libre office on python base image and create a container image for lambda.
+In this project, we are going to convert a doc file to pdf by using libreoffice container deployed on an aws lambda function. We will setup libre office on python base image and create a container image for lambda. A doc file is uploaded to the source bucket. Then sqs message is sent to the lambda function including the bucket name and the object key. The lambda function converts the doc file into pdf and uploads it to the destination bucket.
+
 <h2>System Design</h2>
 <img src="systemdesign.png">
+<h2>Create SQS</h2>
+Create a SQS queue. (test-queue)<br>
+<code>
+<pre>
+visibility timeout = (function timeout * 6) + batch window
+if batch window = 0
+function timeout = 60 s
+
+visibility timeout = 60 * 6 = 360s
+
+Leave the delivery delay and receive message wait time to 0.
+</pre>
+</code>
 <h2>S3</h2>
 Create the following buckets.<br>
 <b>test-src</b>: doc files are uploaded to this bucket<br>
@@ -51,9 +65,24 @@ Within the execution role, make sure to add permission to CloudWatch and S3<br>
 Create a lambda function. Let's call it test-lambda.<br>
 Select container image option. Use the latest image of the previously created ECR repository. <br>
 Select the previously created execution role.<br>
-Create a bucket called test-src (or any other name) and add it as the trigger for our lambda function<br>
-Create the test-dest bucket (or any other name. Make sure update the lambda function code with your destination bucket name). <br>
+Add the previously created SQS queue as the trigger<br>
+<code>
+<pre>
+batch size = 1
+batch window = 0
+</pre>
+</code>
 
-Test the function and observe the logs added by the function appear. 
+upload a doc file to the test-src bucket <br>
+Send a message to the sqs queue including the bucket name and key. <br>
+Check if the test-dest-bucket has the converted pdf file.<br>
+
+SQS Message Format<br>
+<code>
+{"bucket":"test-src-23", "key":"test.docx"}
+</code>
+
+where bucket is the source bucket.
+
 
 
