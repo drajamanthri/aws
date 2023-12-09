@@ -1,4 +1,4 @@
-<h1>Hello world app (SAM CLI, Python)</h2>
+<h1>Hello world app (SAM CLI, Python)</h1>
 <h2>Install AWS SAM CLI</h2>
 Download the package installer. <br>
 Run the downloaded installer. <br>

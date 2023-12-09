@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'python3.11
+
+  Sample SAM Template for test-sqs
+
+  '
+Globals:
+  Function:
+    Timeout: 3
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+Resources:
+  TestSqsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TestSqs-fn
+      PackageType: Image
+      Architectures:
+      - x86_64
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - TestSqsQueue
+              - Arn
+            BatchSize: 1
+      ImageUri: testsqsfunction:python3.11-v1
+    Metadata:
+      DockerContext: /Users/dan/my/github/aws/python/sam/trigger-lambda-by-sqs/test-sqs/fn
+      DockerTag: python3.11-v1
+      Dockerfile: Dockerfile
+      SamResourceId: TestSqsFunction
+  TestSqsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: TestSqs-q
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name:
+        Fn::Sub: ApplicationInsights-SAM-${AWS::StackName}
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+  ApplicationInsightsMonitoring:
+    Type: AWS::ApplicationInsights::Application
+    Properties:
+      ResourceGroupName:
+        Ref: ApplicationResourceGroup
+      AutoConfigurationEnabled: 'true'
+Outputs:
+  TestSqsFunction:
+    Description: Hello World Lambda Function ARN
+    Value:
+      Fn::GetAtt:
+      - TestSqsFunction
+      - Arn
+  TestSqsFunctionIamRole:
+    Description: Implicit IAM Role created for Hello World function
+    Value:
+      Fn::GetAtt:
+      - TestSqsFunctionRole
+      - Arn
