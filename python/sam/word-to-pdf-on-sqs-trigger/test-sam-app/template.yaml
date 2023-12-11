@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  python3.11
+
+  Sample SAM Template for test-sam-app
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+Resources:
+  TestSamFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      PackageType: Image
+      #if function name is not given, auto generated function name has the following format
+      #stackName-ResourceName-randomCode
+      FunctionName: TestSam-fn
+      MemorySize: 4096 #in MB
+      Timeout: 60 #in Seconds
+      
+      Architectures:
+      - x86_64
+      #trigger lambda by sqs queue
+      Events:
+        SQSEvent:
+         Type: SQS
+         Properties:
+           Queue: !GetAtt TestSamQueue.Arn
+           BatchSize: 1
+           MaximumBatchingWindowInSeconds: 0
+    
+    #give lambda access to read from the source bucket and write to the destination bucket
+    Connectors: 
+      SrcConn:   #read access to the src bucket
+        Properties:
+          Destination:
+            Type: AWS::S3::Bucket
+            Arn: arn:aws:s3:::test-src-23
+          Permissions:
+            - Read
+      DestConn:   #write access to the dest bucket
+        Properties:
+          Destination:
+            Type: AWS::S3::Bucket
+            Arn: arn:aws:s3:::test-dest-23
+          Permissions:
+            - Write
+            
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./fn
+      DockerTag: python3.11-v1
+
+  TestSamQueue:
+   Type: AWS::SQS::Queue
+   Properties:
+     #if the queue name is not set, the auto generated queue name has the following format
+     #stackName-queueResourceName-randomCode
+     QueueName: TestSam-q
+     #visibility timeout = (function timeout * 6) + batch window
+     #if batch window = 0 and function timeout = 60 s
+     #visibility timeout = 60 * 6 = 360s
+     #The batch window is set when creating a lambda trigger.
+     VisibilityTimeout: 360
+     MessageRetentionPeriod: 900 #in seconds.  15mim
+  
+  #this was added by SAM as a result of enabled CloudWatch and XRay
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name:
+        Fn::Sub: ApplicationInsights-SAM-${AWS::StackName}
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+  ApplicationInsightsMonitoring:
+    Type: AWS::ApplicationInsights::Application
+    Properties:
+      ResourceGroupName:
+        Ref: ApplicationResourceGroup
+      AutoConfigurationEnabled: 'true'
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  TestSamFunction:
+    Description: Test sam Lambda Function ARN
+    Value: !GetAtt TestSamFunction.Arn
+  HelloWorldFunctionIamRole:
+    Description: Implicit IAM Role created for Hello World function
+    Value: !GetAtt TestSamFunctionRole.Arn
