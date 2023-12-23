@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  python3.11
+
+  Sample SAM Template for text-detect
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+Resources:
+  #start queue triggers the start lambda function
+  #The message contain the source bucket and key.
+  #by default this is a standard queue
+  StartQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      #if the queue name is not set, the auto generated queue name has the following format
+      #stackName-queueResourceName-randomCode
+      QueueName: TextDetect-Queue
+      #visibility timeout = (function timeout * 6) + batch window
+      #if batch window = 0 and function timeout = 3 s
+      #visibility timeout = 3 * 6 = 18s
+      #The batch window is set when creating a lambda trigger.
+      VisibilityTimeout: 18
+      MessageRetentionPeriod: 60 #in seconds
+
+  #When the job is completed, textract will publish a message to this topic.
+  #this topic will trigger the process result lambda function.
+  CompletedNotification:
+    Type: AWS::SNS::Topic
+    Properties:
+      #Note that for the ‘AmazonTextractServiceRole’ policy to work, 
+      #the sns topic name must start with ‘AmazonTextract’. For more information, see the ‘AmazonTextractServiceRole’ policy definition.
+      TopicName: AmazonTextract-completed-notification
+
+  #the role to be assumed by textract
+  TextractRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: TextractRole
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: Allow
+            Principal: #define who can assume this role
+              Service: 
+                - textract.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        #permissions to publish to sns
+        - arn:aws:iam::aws:policy/service-role/AmazonTextractServiceRole
+        #permissions to access s3
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      #when creating an iam role, setting policies with Policies: property
+      #did not work
+      # Policies:
+      #   - AmazonTextractServiceRole
+      #   - AmazonS3FullAccess
+
+  #The start function is triggered by the start queue message.
+  #The start function starts a textract job
+  #When the job is submitted, the sns topic to be used will also be submitted.
+  StartFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      #if function name is not given, auto generated function name has the following format
+      #stackName-ResourceName-randomCode
+      FunctionName: TextDetect-Start
+      PackageType: Image
+      Architectures:
+      - x86_64
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt StartQueue.Arn
+            BatchSize: 1
+            MaximumBatchingWindowInSeconds: 0
+      Policies:
+        - AWSLambdaExecute
+        #give access to detect and analyze documents with textract
+        - AmazonTextractFullAccess
+
+      Environment:
+          Variables:
+            OUTPUT_BUCKET_NAME: test-dest
+            SNS_TOPIC_ARN: !GetAtt CompletedNotification.Arn
+            TEXTRACT_ROLE_ARN: !GetAtt TextractRole.Arn
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./start
+      DockerTag: python3.11-v1
+
+  #This function is triggered by sns topic.
+  #The message contains job id. The function retrieves the textract result using the job id and extracts words.
+  ProcessResultFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      #if function name is not given, auto generated function name has the following format
+      #stackName-ResourceName-randomCode
+      FunctionName: TextDetect-ProcessResult
+      PackageType: Image
+      Architectures:
+      - x86_64
+      Events:
+        # adding sns event subscribes the function to the topic
+        SNSEvent:
+          Type: SNS
+          Properties:
+            #Topic resource doesn't have Arn property.
+            #So Topic: !GetAtt CompletedNotification.Arn didn't work
+            #Topic: !GetAtt CompletedNotification.Arn
+            Topic:
+              Ref: CompletedNotification
+      Policies:
+        - AWSLambdaExecute
+        #Gives access to get detected and analyzed documents from Amazon Textract.
+        - AmazonTextractFullAccess
+
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./process-result
+      DockerTag: python3.11-v1
+
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name:
+        Fn::Sub: ApplicationInsights-SAM-${AWS::StackName}
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+  ApplicationInsightsMonitoring:
+    Type: AWS::ApplicationInsights::Application
+    Properties:
+      ResourceGroupName:
+        Ref: ApplicationResourceGroup
+      AutoConfigurationEnabled: 'true'
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  StartFunction:
+    Description: Start Lambda Function ARN
+    Value: !GetAtt StartFunction.Arn
+  StartFunctionIamRole:
+    Description: Implicit IAM Role created for Start function
+    Value: !GetAtt StartFunctionRole.Arn
